@@ -1,4 +1,8 @@
 const tokenInput = document.getElementById('token');
+const clientIdInput = document.getElementById('client-id');
+const connectBtn = document.getElementById('connect');
+const disconnectBtn = document.getElementById('disconnect');
+const accountStatus = document.getElementById('account-status');
 const searchForm = document.getElementById('search-form');
 const searchInput = document.getElementById('search');
 const suggestionsContainer = document.getElementById('suggestions');
@@ -14,6 +18,42 @@ const genreSelect = document.getElementById('genre');
 const moodSelect = document.getElementById('mood');
 const tempoInput = document.getElementById('tempo');
 const tempoValue = document.getElementById('tempo-value');
+
+const STORAGE_KEY = 'karaoke-spotify-session';
+const STATE_KEY = 'karaoke-spotify-state';
+const VERIFIER_KEY = 'karaoke-spotify-verifier';
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    console.error('Could not parse session', err);
+    return null;
+  }
+}
+
+function saveSession(session) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+}
+
+function clearSession() {
+  localStorage.removeItem(STORAGE_KEY);
+  sessionStorage.removeItem(STATE_KEY);
+  sessionStorage.removeItem(VERIFIER_KEY);
+  tokenInput.value = '';
+  updateAccountStatus();
+}
+
+function updateAccountStatus(profile) {
+  if (profile) {
+    accountStatus.textContent = `Connected as ${profile.display_name || profile.email || 'your account'}`;
+    accountStatus.classList.remove('warning');
+  } else {
+    accountStatus.textContent = 'Not connected';
+    accountStatus.classList.add('warning');
+  }
+}
 
 tempoInput.addEventListener('input', () => {
   tempoValue.textContent = tempoInput.value;
@@ -90,6 +130,166 @@ let audio = null;
 let lyricLines = [];
 let progressTimer = null;
 
+function setStatus(message) {
+  statusEl.textContent = message;
+}
+
+function createRandomString(length = 64) {
+  const array = new Uint8Array(length);
+  crypto.getRandomValues(array);
+  return Array.from(array, (byte) => ('0' + byte.toString(16)).slice(-2)).join('');
+}
+
+async function generateCodeChallenge(codeVerifier) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(codeVerifier);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+async function startAuth() {
+  const clientId = clientIdInput.value.trim();
+  if (!clientId) {
+    setStatus('Enter your Spotify app client ID to connect.');
+    accountStatus.classList.add('warning');
+    return;
+  }
+  const verifier = createRandomString(64);
+  const challenge = await generateCodeChallenge(verifier);
+  const state = createRandomString(16);
+  const redirectUri = `${window.location.origin}${window.location.pathname}`;
+
+  sessionStorage.setItem(STATE_KEY, state);
+  sessionStorage.setItem(VERIFIER_KEY, verifier);
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({ clientId })
+  );
+
+  const url = new URL('https://accounts.spotify.com/authorize');
+  url.searchParams.set('client_id', clientId);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('redirect_uri', redirectUri);
+  url.searchParams.set('code_challenge_method', 'S256');
+  url.searchParams.set('code_challenge', challenge);
+  url.searchParams.set('state', state);
+  url.searchParams.set('scope', 'user-read-email');
+
+  window.location.href = url.toString();
+}
+
+async function exchangeCodeForToken(code) {
+  const verifier = sessionStorage.getItem(VERIFIER_KEY);
+  const state = sessionStorage.getItem(STATE_KEY);
+  const stored = loadSession();
+  if (!verifier || !state || !stored?.clientId) {
+    setStatus('Missing verifier or client ID. Please try connecting again.');
+    return null;
+  }
+
+  const params = new URLSearchParams({
+    client_id: stored.clientId,
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: `${window.location.origin}${window.location.pathname}`,
+    code_verifier: verifier
+  });
+
+  const res = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params
+  });
+
+  if (!res.ok) {
+    setStatus('Could not complete Spotify sign-in. Double-check the client ID and redirect URI.');
+    return null;
+  }
+
+  const data = await res.json();
+  const expiresAt = Date.now() + data.expires_in * 1000 - 5000;
+  const session = {
+    clientId: stored.clientId,
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    expiresAt
+  };
+  saveSession(session);
+  tokenInput.value = data.access_token;
+  return session;
+}
+
+async function refreshAccessToken(session) {
+  if (!session?.refreshToken || !session?.clientId) return null;
+  const params = new URLSearchParams({
+    client_id: session.clientId,
+    grant_type: 'refresh_token',
+    refresh_token: session.refreshToken
+  });
+
+  const res = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params
+  });
+
+  if (!res.ok) {
+    clearSession();
+    setStatus('Session expired. Connect again to refresh access.');
+    return null;
+  }
+
+  const data = await res.json();
+  const expiresAt = Date.now() + data.expires_in * 1000 - 5000;
+  const updated = {
+    ...session,
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token || session.refreshToken,
+    expiresAt
+  };
+  saveSession(updated);
+  tokenInput.value = updated.accessToken;
+  return updated;
+}
+
+async function fetchProfile(token) {
+  try {
+    const res = await fetch('https://api.spotify.com/v1/me', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Profile fetch failed');
+    const data = await res.json();
+    updateAccountStatus(data);
+  } catch (err) {
+    console.error(err);
+    updateAccountStatus();
+  }
+}
+
+async function ensureToken() {
+  const manual = tokenInput.value.trim();
+  if (manual) {
+    return manual;
+  }
+
+  let session = loadSession();
+  if (!session?.accessToken) {
+    setStatus('Connect with Spotify or paste an access token to enable search and lyrics.');
+    updateAccountStatus();
+    return '';
+  }
+
+  if (session.expiresAt && Date.now() > session.expiresAt) {
+    session = await refreshAccessToken(session);
+  }
+
+  if (!session?.accessToken) return '';
+  tokenInput.value = session.accessToken;
+  fetchProfile(session.accessToken);
+  return session.accessToken;
 function getToken() {
   const token = tokenInput.value.trim();
   if (!token) {
@@ -162,6 +362,7 @@ function renderResults(items) {
 }
 
 async function searchTracks(query) {
+  const token = await ensureToken();
   const token = getToken();
   if (!token) return;
   setStatus('Searching...');
@@ -180,6 +381,7 @@ async function searchTracks(query) {
 }
 
 async function fetchLyrics(trackId) {
+  const token = await ensureToken();
   const token = getToken();
   if (!token) return null;
   try {
@@ -255,6 +457,7 @@ function attachAudio(url) {
 }
 
 async function loadTrackFromSuggestion(s) {
+  const token = await ensureToken();
   const token = getToken();
   const meta = token ? await fetchTrack(s.id, token) : null;
   const track = meta || { name: s.title, artists: [{ name: s.artist }], album: { images: [{}, { url: s.album }] }, id: s.id, preview_url: s.preview };
@@ -272,6 +475,27 @@ async function fetchTrack(id, token) {
     console.error(err);
     return null;
   }
+}
+
+async function handleRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const state = params.get('state');
+  const storedState = sessionStorage.getItem(STATE_KEY);
+  if (!code || !state) return;
+
+  if (state !== storedState) {
+    setStatus('State mismatch. Please try connecting again.');
+    return;
+  }
+
+  const session = await exchangeCodeForToken(code);
+  if (session?.accessToken) {
+    await fetchProfile(session.accessToken);
+    setStatus('Connected! You can now search and sing.');
+  }
+
+  window.history.replaceState({}, document.title, window.location.pathname);
 }
 
 async function loadTrack(track) {
@@ -303,6 +527,11 @@ function fallbackLyrics(title, artist) {
   return baseline.map((text, idx) => ({ time: idx * 3000, text }));
 }
 
+searchForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const query = searchInput.value.trim();
+  if (!query) return;
+  await searchTracks(query);
 searchForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const query = searchInput.value.trim();
@@ -320,5 +549,24 @@ pauseBtn.addEventListener('click', () => {
   audio.pause();
 });
 
+connectBtn.addEventListener('click', async () => {
+  await startAuth();
+});
+
+disconnectBtn.addEventListener('click', () => {
+  clearSession();
+  setStatus('Disconnected. Paste a token or reconnect to keep singing.');
+});
+
+(async () => {
+  const session = loadSession();
+  if (session?.clientId) {
+    clientIdInput.value = session.clientId;
+  }
+  await handleRedirect();
+  await ensureToken();
+  renderSuggestions();
+  setStatus('Paste a Spotify token or connect your account, pick a song, and press Play.');
+})();
 renderSuggestions();
 setStatus('Paste a Spotify token, pick a song, and press Play.');

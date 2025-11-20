@@ -14,6 +14,20 @@
   <div class="app">
     <header>
       <div class="brand">🎤 Karaoke King</div>
+      <div class="auth-box">
+        <div class="token-input">
+          <label for="token">Spotify access token</label>
+          <input id="token" type="password" placeholder="Paste a temporary OAuth token" />
+        </div>
+        <div class="oauth">
+          <label for="client-id">Or connect your Spotify account</label>
+          <div class="oauth-row">
+            <input id="client-id" type="text" placeholder="Your Spotify app client ID" />
+            <button id="connect">Connect with Spotify</button>
+            <button id="disconnect" class="secondary">Disconnect</button>
+          </div>
+          <p class="hint small" id="account-status">Not connected</p>
+        </div>
       <div class="token-input">
         <label for="token">Spotify access token</label>
         <input id="token" type="password" placeholder="Paste a temporary OAuth token" />
