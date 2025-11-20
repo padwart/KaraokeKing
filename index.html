@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Karaoke King</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="background"></div>
+  <div class="app">
+    <header>
+      <div class="brand">🎤 Karaoke King</div>
+      <div class="auth-box">
+        <div class="token-input">
+          <label for="token">Spotify access token</label>
+          <input id="token" type="password" placeholder="Paste a temporary OAuth token" />
+        </div>
+        <div class="oauth">
+          <label for="client-id">Or connect your Spotify account</label>
+          <div class="oauth-row">
+            <input id="client-id" type="text" placeholder="Your Spotify app client ID" />
+            <button id="connect">Connect with Spotify</button>
+            <button id="disconnect" class="secondary">Disconnect</button>
+          </div>
+          <p class="hint small" id="account-status">Not connected</p>
+        </div>
+      </div>
+    </header>
+
+    <section class="panels">
+      <div class="panel search-panel">
+        <div class="panel-header">
+          <h2>Find a song</h2>
+          <p class="hint">Search Spotify or pick a suggestion to begin.</p>
+        </div>
+        <form id="search-form" class="search-form">
+          <input id="search" type="text" placeholder="Search for songs or artists" />
+          <button type="submit">Search</button>
+        </form>
+
+        <div class="filters">
+          <div>
+            <label for="genre">Genre</label>
+            <select id="genre">
+              <option value="">Any</option>
+              <option value="pop">Pop</option>
+              <option value="rock">Rock</option>
+              <option value="dance">Dance</option>
+              <option value="hip-hop">Hip-Hop</option>
+            </select>
+          </div>
+          <div>
+            <label for="mood">Mood</label>
+            <select id="mood">
+              <option value="">Any</option>
+              <option value="energetic">Energetic</option>
+              <option value="uplifting">Uplifting</option>
+              <option value="chill">Chill</option>
+              <option value="dramatic">Dramatic</option>
+            </select>
+          </div>
+          <div>
+            <label for="tempo">Max tempo</label>
+            <input id="tempo" type="range" min="80" max="160" value="140" />
+            <div class="tempo-value"><span id="tempo-value">140</span> BPM</div>
+          </div>
+        </div>
+
+        <div class="suggestions" id="suggestions"></div>
+        <div class="results" id="results"></div>
+      </div>
+
+      <div class="panel stage">
+        <div class="panel-header">
+          <div class="track-meta">
+            <img id="cover" src="" alt="Album art" />
+            <div>
+              <p class="track-title" id="track-title">Pick a song to start</p>
+              <p class="track-artist" id="track-artist"></p>
+            </div>
+          </div>
+          <div class="controls">
+            <button id="play">Play ▶</button>
+            <button id="pause">Pause ⏸</button>
+          </div>
+        </div>
+
+        <div class="lyrics" id="lyrics"></div>
+
+        <div class="status" id="status">Waiting for lyrics...</div>
+      </div>
+    </section>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
