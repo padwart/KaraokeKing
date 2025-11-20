@@ -290,6 +290,16 @@ async function ensureToken() {
   tokenInput.value = session.accessToken;
   fetchProfile(session.accessToken);
   return session.accessToken;
+function getToken() {
+  const token = tokenInput.value.trim();
+  if (!token) {
+    setStatus('Paste a Spotify access token to enable live lyrics and search.');
+  }
+  return token;
+}
+
+function setStatus(message) {
+  statusEl.textContent = message;
 }
 
 function renderSuggestions() {
@@ -353,6 +363,7 @@ function renderResults(items) {
 
 async function searchTracks(query) {
   const token = await ensureToken();
+  const token = getToken();
   if (!token) return;
   setStatus('Searching...');
   try {
@@ -371,6 +382,7 @@ async function searchTracks(query) {
 
 async function fetchLyrics(trackId) {
   const token = await ensureToken();
+  const token = getToken();
   if (!token) return null;
   try {
     const res = await fetch(`https://spclient.wg.spotify.com/color-lyrics/v2/track/${trackId}?format=json&vocalRemoval=false`, {
@@ -446,6 +458,7 @@ function attachAudio(url) {
 
 async function loadTrackFromSuggestion(s) {
   const token = await ensureToken();
+  const token = getToken();
   const meta = token ? await fetchTrack(s.id, token) : null;
   const track = meta || { name: s.title, artists: [{ name: s.artist }], album: { images: [{}, { url: s.album }] }, id: s.id, preview_url: s.preview };
   loadTrack(track);
@@ -519,6 +532,11 @@ searchForm.addEventListener('submit', async (e) => {
   const query = searchInput.value.trim();
   if (!query) return;
   await searchTracks(query);
+searchForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const query = searchInput.value.trim();
+  if (!query) return;
+  searchTracks(query);
 });
 
 playBtn.addEventListener('click', () => {
@@ -550,3 +568,5 @@ disconnectBtn.addEventListener('click', () => {
   renderSuggestions();
   setStatus('Paste a Spotify token or connect your account, pick a song, and press Play.');
 })();
+renderSuggestions();
+setStatus('Paste a Spotify token, pick a song, and press Play.');
