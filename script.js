@@ -18,6 +18,8 @@ const genreSelect = document.getElementById('genre');
 const moodSelect = document.getElementById('mood');
 const tempoInput = document.getElementById('tempo');
 const tempoValue = document.getElementById('tempo-value');
+const vocalSlider = document.getElementById('vocal-reduction');
+const vocalValue = document.getElementById('vocal-value');
 
 const STORAGE_KEY = 'karaoke-spotify-session';
 const STATE_KEY = 'karaoke-spotify-state';
@@ -62,6 +64,7 @@ tempoInput.addEventListener('input', () => {
 
 genreSelect.addEventListener('change', renderSuggestions);
 moodSelect.addEventListener('change', renderSuggestions);
+vocalSlider.addEventListener('input', (e) => applyVocalMix(Number(e.target.value)));
 
 const suggestions = [
   {
@@ -129,6 +132,11 @@ const suggestions = [
 let audio = null;
 let lyricLines = [];
 let progressTimer = null;
+let audioContext = null;
+let sourceNode = null;
+let dryGain = null;
+let wetGain = null;
+let vocalMix = 0;
 
 function setStatus(message) {
   statusEl.textContent = message;
@@ -446,11 +454,70 @@ function stopProgressWatcher() {
   }
 }
 
+function applyVocalMix(value) {
+  vocalMix = value;
+  const mix = value / 100;
+  if (dryGain) dryGain.gain.value = 1 - mix;
+  if (wetGain) wetGain.gain.value = mix;
+  vocalValue.textContent = `${Math.round(value)}%`;
+}
+
+function buildAudioGraph() {
+  if (!audio) return;
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+
+  if (sourceNode) {
+    try {
+      sourceNode.disconnect();
+    } catch (err) {
+      console.warn('Could not disconnect previous source', err);
+    }
+  }
+
+  sourceNode = audioContext.createMediaElementSource(audio);
+  dryGain = audioContext.createGain();
+  wetGain = audioContext.createGain();
+
+  const splitter = audioContext.createChannelSplitter(2);
+  const merger = audioContext.createChannelMerger(2);
+  const invertRight = audioContext.createGain();
+  const invertLeft = audioContext.createGain();
+  invertRight.gain.value = -1;
+  invertLeft.gain.value = -1;
+
+  sourceNode.connect(dryGain).connect(audioContext.destination);
+
+  sourceNode.connect(splitter);
+  splitter.connect(merger, 0, 0);
+  splitter.connect(invertRight, 1);
+  invertRight.connect(merger, 0, 0);
+
+  splitter.connect(merger, 1, 1);
+  splitter.connect(invertLeft, 0);
+  invertLeft.connect(merger, 0, 1);
+
+  merger.connect(wetGain).connect(audioContext.destination);
+
+  applyVocalMix(vocalMix);
+}
+
 function attachAudio(url) {
   if (audio) {
     audio.pause();
   }
   audio = new Audio(url);
+  audio.crossOrigin = 'anonymous';
+  audio.addEventListener('play', () => {
+    if (audioContext && audioContext.state === 'suspended') {
+      audioContext.resume();
+    }
+    startProgressWatcher();
+  });
+  audio.addEventListener('pause', stopProgressWatcher);
+  audio.addEventListener('ended', stopProgressWatcher);
+  buildAudioGraph();
   audio.addEventListener('play', startProgressWatcher);
   audio.addEventListener('pause', stopProgressWatcher);
   audio.addEventListener('ended', stopProgressWatcher);
@@ -566,6 +633,9 @@ disconnectBtn.addEventListener('click', () => {
   await handleRedirect();
   await ensureToken();
   renderSuggestions();
+  applyVocalMix(Number(vocalSlider.value));
+  setStatus('Paste a Spotify token or connect your account, pick a song, and press Play.');
+})();
   setStatus('Paste a Spotify token or connect your account, pick a song, and press Play.');
 })();
 renderSuggestions();

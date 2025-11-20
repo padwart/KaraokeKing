@@ -329,6 +329,32 @@ header {
   gap: 8px;
 }
 
+.vocal-stripper {
+  margin: 1.25rem 0;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+}
+
+.vocal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.vocal-header .label {
+  font-weight: 700;
+  margin: 0;
+}
+
+.vocal-stripper input[type="range"] {
+  width: 100%;
+  accent-color: #8f8bfd;
+}
+
 .lyrics {
   min-height: 320px;
   border-radius: 14px;

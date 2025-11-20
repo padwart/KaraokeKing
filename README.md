@@ -22,3 +22,4 @@ Open `index.html` in a modern browser. For full functionality you can either pas
 - Synced lyric highlighting using the color-lyrics endpoint when available.
 - Fallback instructional lyrics and metadata when previews or lyrics are missing.
 - Responsive layout with neon-inspired gradients for readability.
+- Built-in vocal reduction slider to strip or lower centered vocals while keeping instrumentation.
